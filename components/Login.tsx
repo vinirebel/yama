@@ -44,7 +44,12 @@ export const Login: React.FC = () => {
         setTimeout(() => setResetMode(false), 5000);
     } catch (err: any) {
         console.error(err);
-        setError('Erro ao enviar email de recuperação. Verifique o email digitado.');
+        const msg = err.message || '';
+        if (msg.toLowerCase().includes('rate limit')) {
+            setError('Muitas solicitações de recuperação. Aguarde alguns minutos.');
+        } else {
+            setError('Erro ao enviar email de recuperação. Verifique o email digitado.');
+        }
     } finally {
         setLoading(false);
     }
@@ -101,6 +106,8 @@ export const Login: React.FC = () => {
              setError('Este email já está cadastrado.');
         } else if (errorCode === 'auth/weak-password') {
              setError('A senha deve ter pelo menos 6 caracteres.');
+        } else if (errorMessage.toLowerCase().includes('rate limit')) {
+            setError('Muitas solicitações seguidas. Aguarde alguns minutos antes de tentar novamente.');
         } else {
             setError(errorMessage || 'Erro ao entrar. Tente novamente.');
         }
