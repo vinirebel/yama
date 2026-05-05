@@ -1,0 +1,8 @@
+{
+  "name": "FidelizaAI",
+  "description": "Um sistema moderno de cartão de fidelidade com insights de IA para engajamento de clientes.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
