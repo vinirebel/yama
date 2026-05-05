@@ -64,6 +64,9 @@ CREATE POLICY "Usuários veem seus próprios cartões" ON public.cards
     WHERE profiles.id = auth.uid() AND (profiles.role = 'ADMIN' OR profiles.role = 'STAFF')
   ));
 
+CREATE POLICY "Usuários podem criar seus próprios cartões" ON public.cards
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
 CREATE POLICY "Admins e Staff podem gerenciar cartões" ON public.cards
   FOR ALL USING (
     EXISTS (

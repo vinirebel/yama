@@ -265,6 +265,23 @@ const createActiveCardFirebase = async (db: any, userId: string): Promise<StampC
 const createSupabaseService = (): IStorageService => {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+  const mapCardFromDb = (d: any): StampCard => ({
+    id: d.id,
+    userId: d.user_id,
+    currentStamps: d.current_stamps,
+    completed: d.completed,
+    redeemed: d.redeemed,
+    history: d.history
+  });
+
+  const mapConfigFromDb = (d: any): LoyaltyConfig => ({
+    businessName: d.business_name,
+    totalStamps: d.total_stamps,
+    rewardDescription: d.reward_description,
+    themeColor: d.theme_color,
+    logo: d.logo
+  });
+
   return {
     subscribeToAuth: (callback) => {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -341,16 +358,25 @@ const createSupabaseService = (): IStorageService => {
         .eq('id', 'main')
         .single()
         .then(({ data }) => {
-          if (data) callback(data as LoyaltyConfig);
-          else {
-            supabase.from('config').insert(DEFAULT_CONFIG).then(() => callback(DEFAULT_CONFIG));
+          if (data) {
+            callback(mapConfigFromDb(data));
+          } else {
+            const dbConfig = {
+              id: 'main',
+              business_name: DEFAULT_CONFIG.businessName,
+              total_stamps: DEFAULT_CONFIG.totalStamps,
+              reward_description: DEFAULT_CONFIG.rewardDescription,
+              theme_color: DEFAULT_CONFIG.themeColor,
+              logo: DEFAULT_CONFIG.logo
+            };
+            supabase.from('config').insert(dbConfig).then(() => callback(DEFAULT_CONFIG));
           }
         });
 
       const channel = supabase
         .channel('schema-db-changes')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
-           callback(payload.new as LoyaltyConfig);
+           callback(mapConfigFromDb(payload.new));
         })
         .subscribe();
       
@@ -358,13 +384,22 @@ const createSupabaseService = (): IStorageService => {
     },
 
     saveConfig: async (config) => {
-      const { error } = await supabase.from('config').upsert({ id: 'main', ...config });
+      const dbConfig = {
+        id: 'main',
+        business_name: config.businessName,
+        total_stamps: config.totalStamps,
+        reward_description: config.rewardDescription,
+        theme_color: config.themeColor,
+        logo: config.logo
+      };
+      const { error } = await supabase.from('config').upsert(dbConfig);
       if (error) throw error;
     },
 
     getConfig: async () => {
       const { data } = await supabase.from('config').select('*').eq('id', 'main').single();
-      return (data as LoyaltyConfig) || DEFAULT_CONFIG;
+      if (!data) return DEFAULT_CONFIG;
+      return mapConfigFromDb(data);
     },
 
     subscribeToUsers: (callback) => {
@@ -381,12 +416,18 @@ const createSupabaseService = (): IStorageService => {
     },
 
     subscribeToCards: (callback) => {
-      supabase.from('cards').select('*').then(({ data }) => callback(data || []));
+      supabase.from('cards').select('*').then(({ data }) => {
+        const mapped = (data || []).map(mapCardFromDb);
+        callback(mapped as unknown as StampCard[]);
+      });
       
       const channel = supabase
         .channel('cards-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cards' }, () => {
-           supabase.from('cards').select('*').then(({ data }) => callback(data || []));
+           supabase.from('cards').select('*').then(({ data }) => {
+             const mapped = (data || []).map(mapCardFromDb);
+             callback(mapped as unknown as StampCard[]);
+           });
         })
         .subscribe();
       
@@ -399,11 +440,11 @@ const createSupabaseService = (): IStorageService => {
       const { data } = await supabase
         .from('cards')
         .select('*')
-        .eq('userId', userId)
+        .eq('user_id', userId)
         .eq('redeemed', false)
         .single();
       
-      if (data) return data as unknown as StampCard;
+      if (data) return mapCardFromDb(data);
       return createActiveCardSupabase(supabase, userId);
     },
 
@@ -415,8 +456,12 @@ const createSupabaseService = (): IStorageService => {
         .eq('redeemed', false)
         .single();
       
-      let activeCard = card as unknown as StampCard;
-      if (!activeCard) activeCard = await createActiveCardSupabase(supabase, userId);
+      let activeCard: StampCard;
+      if (card) {
+        activeCard = mapCardFromDb(card);
+      } else {
+        activeCard = await createActiveCardSupabase(supabase, userId);
+      }
 
       if (activeCard.currentStamps < config.totalStamps) {
          const newStamps = activeCard.currentStamps + 1;
@@ -439,7 +484,7 @@ const createSupabaseService = (): IStorageService => {
         .single();
       
       if (card) {
-          const activeCard = card as unknown as StampCard;
+          const activeCard = mapCardFromDb(card);
           if (activeCard.currentStamps > 0) {
               const newStamps = activeCard.currentStamps - 1;
               const history = [...activeCard.history, { date: new Date().toISOString(), action: 'REMOVED' }];
@@ -461,7 +506,7 @@ const createSupabaseService = (): IStorageService => {
         .single();
       
       if (card) {
-          const activeCard = card as unknown as StampCard;
+          const activeCard = mapCardFromDb(card);
           const history = [...activeCard.history, { date: new Date().toISOString(), action: 'REDEEM' }];
           await supabase
             .from('cards')
